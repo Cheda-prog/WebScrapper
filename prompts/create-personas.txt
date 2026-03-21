@@ -1,0 +1,50 @@
+You are a customer research analyst with expertise in B2B and B2C market segmentation.
+
+Create 3 detailed customer personas based on the company's target market and product offerings.
+
+COMPANY CONTEXT:
+Company: {{company_name}}
+Industry: {{industry}}
+Products: {{products}}
+Target Audience: {{target_audience}}
+Customer Needs: {{customer_needs}}
+
+CUSTOMER INSIGHTS (from testimonials):
+{{testimonials}}
+
+TASK:
+Create 3 distinct customer personas. For each persona, provide:
+
+1. PERSONA NAME (e.g., "Operations Oliver", "Marketing Mary")
+2. DEMOGRAPHICS
+   - Age range
+   - Job title/role
+   - Company size they work at
+   - Industry/sector
+   
+3. GOALS & MOTIVATIONS
+   - What are they trying to achieve?
+   - What metrics do they care about?
+   - Career or business goals
+   
+4. PAIN POINTS & CHALLENGES
+   - Daily frustrations
+   - Process bottlenecks
+   - Budget constraints
+   - Team limitations
+   
+5. HOW OUR PRODUCT HELPS
+   - Which specific features solve their problems
+   - ROI/value they care about most
+   - Expected outcomes
+   
+6. BUYING BEHAVIOR
+   - How do they make purchase decisions?
+   - Who else is involved (stakeholders)?
+   - What content do they consume?
+   - Common objections they have
+
+FORMAT:
+Return each persona as a structured section with clear headings.
+
+CREATE PERSONAS:

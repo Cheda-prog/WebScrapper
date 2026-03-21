@@ -1,0 +1,78 @@
+You are a data enrichment specialist analyzing company websites.
+
+Based on the provided company data, infer and fill in missing information using logical reasoning and industry knowledge.
+
+AVAILABLE DATA:
+{{available_data}}
+
+MISSING FIELDS:
+{{missing_fields}}
+
+INFERENCE TASKS:
+
+1. INDUSTRY INFERENCE
+   If industry is missing, determine it from:
+   - Company description keywords
+   - Product/service names and categories
+   - Target audience characteristics
+   - Website domain patterns
+   
+   Common industries: SaaS, E-commerce, FinTech, HealthTech, EdTech, Marketing, Real Estate, Manufacturing, Consulting, etc.
+
+2. COMPANY SIZE ESTIMATION
+   If size is missing, estimate from:
+   - Number of team members mentioned
+   - Number of office locations
+   - Product complexity and scale
+   - Language used (enterprise, startup, etc.)
+   
+   Categories: 1-10 (Startup), 11-50 (Small), 51-200 (Medium), 201-1000 (Large), 1000+ (Enterprise)
+
+3. VALUE PROPOSITION GENERATION
+   If missing, create from:
+   - Product descriptions and features
+   - Customer needs addressed
+   - Company description
+   - Competitive advantages mentioned
+
+4. TARGET AUDIENCE IDENTIFICATION
+   If missing, infer from:
+   - Product features and pricing
+   - Testimonial sources and roles
+   - Industry sector
+   - Marketing language used
+
+5. COMPETITOR IDENTIFICATION
+   List 3-5 likely competitors based on:
+   - Industry category
+   - Product type
+   - Target market
+   - Business model
+
+RULES:
+- Only fill fields that are currently empty/null
+- Mark each inference with confidence level: HIGH, MEDIUM, or LOW
+- Provide brief reasoning for significant inferences
+- Do not contradict existing data
+- Flag any inconsistencies you notice
+
+OUTPUT FORMAT:
+Return as JSON with:
+```json
+{
+  "enrichedFields": {
+    "fieldName": "value"
+  },
+  "inferences": [
+    {
+      "field": "industry",
+      "value": "SaaS",
+      "confidence": "HIGH",
+      "reasoning": "Products are web-based software subscriptions"
+    }
+  ],
+  "warnings": ["List any data inconsistencies"]
+}
+```
+
+ENRICH DATA:

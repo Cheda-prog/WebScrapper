@@ -1,18 +1,24 @@
-/**
- * Supabase Client Configuration
- * 
- * This file creates a Supabase client that connects to your database.
- * You'll need to add your Supabase URL and API key to a .env.local file.
- */
+/* 
+Simply lets you connect to the superbase client 
+*/
+import { createClient } from "@supabase/supabase-js";
 
-import { createClient } from '@supabase/supabase-js';
+// adding this or statment so that the app doesn't just crash since adding to data isn't most crutial
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
 
-// These come from your Supabase project settings
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
+// Use service role key for server-side operations (bypasses RLS)
+// Use anon key for client-side operations (respects RLS policies)
+// this is dangerous but will ignore for now since it's not for production
+const supabaseServiceKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "";
 
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-  console.warn('⚠️  Supabase credentials not found. Please create .env.local with NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY');
+// really useful error message i
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !supabaseServiceKey) {
+  console.warn(" Supabase credentials not found. need an .env.local file");
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// function creates a client takes int URL nad service Key
+export const supabase = createClient(supabaseUrl, supabaseServiceKey);

@@ -12,13 +12,37 @@ export default function ViewKnowledgePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('card');
   const [selectedKB, setSelectedKB] = useState<KnowledgeBase | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Load from localStorage (in production, this would be Supabase)
-    const saved = JSON.parse(localStorage.getItem('knowledgeBases') || '[]');
-    setKnowledgeBases(saved);
-    setFilteredBases(saved);
+    fetchKnowledgeBases();
   }, []);
+
+  const fetchKnowledgeBases = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch('/api/knowledge-bases');
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log(`📂 Loaded ${result.count} knowledge bases from ${result.source || 'database'}`);
+        setKnowledgeBases(result.data || []);
+        setFilteredBases(result.data || []);
+      } else {
+        setError(result.error || 'Failed to fetch knowledge bases');
+        console.warn('⚠️  Failed to fetch knowledge bases:', result.error);
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError('Failed to load knowledge bases: ' + errorMessage);
+      console.error('💥 Error fetching knowledge bases:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (searchQuery) {
@@ -33,15 +57,35 @@ export default function ViewKnowledgePage() {
     }
   }, [searchQuery, knowledgeBases]);
 
-  const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this knowledge base?')) {
-      const updated = knowledgeBases.filter(kb => kb.id !== id);
-      setKnowledgeBases(updated);
-      setFilteredBases(updated);
-      localStorage.setItem('knowledgeBases', JSON.stringify(updated));
-      if (selectedKB?.id === id) {
-        setSelectedKB(null);
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this knowledge base?')) {
+      return;
+    }
+
+    try {
+      // Delete from database
+      const response = await fetch(`/api/knowledge-bases/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        // Update local state
+        const updated = knowledgeBases.filter(kb => kb.id !== id);
+        setKnowledgeBases(updated);
+        setFilteredBases(updated);
+        
+        if (selectedKB?.id === id) {
+          setSelectedKB(null);
+        }
+        
+        console.log('✅ Knowledge base deleted successfully');
+      } else {
+        const result = await response.json();
+        alert('Failed to delete: ' + (result.error || 'Unknown error'));
       }
+    } catch (err) {
+      console.error('Error deleting knowledge base:', err);
+      alert('Failed to delete knowledge base');
     }
   };
 
@@ -114,12 +158,45 @@ export default function ViewKnowledgePage() {
         </div>
 
         {/* Results Count */}
-        <p className="text-gray-600 dark:text-gray-400 mb-4">
-          Showing {filteredBases.length} of {knowledgeBases.length} knowledge bases
-        </p>
+        <div className="flex justify-between items-center mb-4">
+          <p className="text-gray-600 dark:text-gray-400">
+            Showing {filteredBases.length} of {knowledgeBases.length} knowledge bases
+          </p>
+          <button
+            onClick={fetchKnowledgeBases}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
+          >
+            {loading ? 'Loading...' : 'Refresh'}
+          </button>
+        </div>
+
+        {/* Loading State */}
+        {loading && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-12 text-center">
+            <p className="text-gray-500 dark:text-gray-400 text-lg">
+              Loading saved knowledge bases...
+            </p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && !loading && (
+          <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-6 mb-6">
+            <p className="text-red-600 dark:text-red-400">
+              Error: {error}
+            </p>
+            <button
+              onClick={fetchKnowledgeBases}
+              className="mt-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
 
         {/* Content based on view mode */}
-        {filteredBases.length === 0 ? (
+        {!loading && !error && filteredBases.length === 0 ? (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-12 text-center">
             <p className="text-gray-500 dark:text-gray-400 text-lg">
               {knowledgeBases.length === 0
@@ -135,7 +212,7 @@ export default function ViewKnowledgePage() {
               </Link>
             )}
           </div>
-        ) : (
+        ) : !loading && !error ? (
           <>
             {viewMode === 'card' && <CardView bases={filteredBases} onDelete={handleDelete} onDownload={downloadJSON} />}
             {viewMode === 'table' && <TableView bases={filteredBases} onDelete={handleDelete} onDownload={downloadJSON} />}
@@ -149,7 +226,7 @@ export default function ViewKnowledgePage() {
               />
             )}
           </>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -157,7 +234,7 @@ export default function ViewKnowledgePage() {
 
 function CardView({ bases, onDelete, onDownload }: {
   bases: KnowledgeBase[];
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
   onDownload: (kb: KnowledgeBase) => void;
 }) {
   return (
@@ -210,7 +287,7 @@ function CardView({ bases, onDelete, onDownload }: {
 
 function TableView({ bases, onDelete, onDownload }: {
   bases: KnowledgeBase[];
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
   onDownload: (kb: KnowledgeBase) => void;
 }) {
   return (
@@ -279,7 +356,7 @@ function DetailView({ bases, selectedKB, onSelect, onDelete, onDownload }: {
   bases: KnowledgeBase[];
   selectedKB: KnowledgeBase | null;
   onSelect: (kb: KnowledgeBase) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
   onDownload: (kb: KnowledgeBase) => void;
 }) {
   return (

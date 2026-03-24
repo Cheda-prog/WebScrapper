@@ -28,17 +28,27 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Scrape the website with enhanced extraction
     console.log('🔍 Scraping website:', normalizedUrl);
-    const scrapedData = await scrapeWebsiteEnhanced(normalizedUrl);
+    let scrapedData;
+    try {
+      scrapedData = await scrapeWebsiteEnhanced(normalizedUrl);
+    } catch (scrapeError) {
+      const scrapeErrorMsg = scrapeError instanceof Error ? scrapeError.message : 'Failed to scrape website';
+      console.error('❌ Scraping failed:', scrapeErrorMsg);
+      return NextResponse.json(
+        { success: false, error: scrapeErrorMsg },
+        { status: 500 }
+      );
+    }
 
-    // Step 2: Enrich data with LLM (if OpenAI is configured)
+    // Step 2: Enrich data with LLM (if NVIDIA NIM is configured)
     let enrichedData = scrapedData;
     let llmEnrichments: any = {};
     
-    const hasOpenAIKey = process.env.OPENAI_API_KEY;
+    const hasNVIDIAKey = process.env.NVIDIA_API_KEY;
     
-    if (hasOpenAIKey) {
+    if (hasNVIDIAKey) {
       try {
-        console.log('🤖 Enriching data with AI...');
+        console.log('🤖 Enriching data with AI (NVIDIA NIM)...');
         
         // Enrich missing fields (industry, value proposition, etc.)
         enrichedData = await enrichMissingData(scrapedData);
@@ -60,13 +70,28 @@ export async function POST(request: NextRequest) {
           llmEnrichments.enrichedFields.push('valueProposition');
         }
         
+        // Merge AI enrichments into the enriched data
+        enrichedData.aiEnrichments = {
+          ...llmEnrichments,
+          enrichedAt: new Date().toISOString()
+        };
+        
+        // Also update positioning with AI-generated pitch if available
+        if (llmEnrichments.aiGeneratedPitch) {
+          enrichedData.positioning = {
+            ...enrichedData.positioning,
+            aiGeneratedPitch: llmEnrichments.aiGeneratedPitch
+          };
+        }
+        
         console.log('✅ AI enrichment complete. Enriched fields:', llmEnrichments.enrichedFields);
       } catch (llmError) {
-        console.warn('⚠️  LLM enrichment failed:', llmError instanceof Error ? llmError.message : 'Unknown error');
-        // Continue with scraped data if LLM fails
+        const errorMsg = llmError instanceof Error ? llmError.message : 'Unknown error';
+        console.warn('⚠️  LLM enrichment failed (scraping continues):', errorMsg);
+        // Continue with scraped data if LLM fails - no throw here
       }
     } else {
-      console.log('ℹ️  OpenAI not configured - skipping AI enrichment');
+      console.log('ℹ️  NVIDIA API key not configured - skipping AI enrichment');
     }
 
     // Step 3: Try to save to Supabase database (optional)
@@ -75,7 +100,7 @@ export async function POST(request: NextRequest) {
     
     // Check if Supabase is configured
     const hasSupabaseConfig = process.env.NEXT_PUBLIC_SUPABASE_URL && 
-                              process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+                              process.env.SUPABASE_SERVICE_ROLE_KEY;
     
     if (hasSupabaseConfig) {
       try {
@@ -85,33 +110,43 @@ export async function POST(request: NextRequest) {
       } catch (saveErr) {
         saveError = saveErr instanceof Error ? saveErr.message : 'Failed to save to database';
         console.warn('⚠️  Could not save to Supabase:', saveError);
+        
+        // If table doesn't exist, provide helpful guidance
+        if (saveError.includes('supabase-setup.sql') || 
+            saveError.includes('table') || 
+            saveError.includes('column')) {
+          console.log('💡 Database schema issue detected - guiding user to setup script');
+        }
+        
         // Don't fail the entire request if database save fails
       }
     } else {
       console.log('ℹ️  Supabase not configured - returning enriched data only');
+      saveError = 'Supabase not configured (missing SUPABASE_SERVICE_ROLE_KEY)';
     }
 
     // Step 4: Return enriched data and metadata
     return NextResponse.json({
       success: true,
       data: enrichedData,
-      enrichments: hasOpenAIKey ? llmEnrichments : null,
-      saved: saveResult ? {
-        companyId: saveResult.companyId,
-        knowledgeBaseId: saveResult.knowledgeBaseId
-      } : null,
+      enrichments: hasNVIDIAKey ? llmEnrichments : null,
+      saved: saveResult ? { companyId: saveResult.companyId, knowledgeBaseId: saveResult.knowledgeBaseId } : null,
       warnings: [
         ...(!hasSupabaseConfig ? ['Supabase not configured - data not saved to database'] : []),
         ...(saveError ? [`Database save failed: ${saveError}`] : []),
-        ...(!hasOpenAIKey ? ['OpenAI not configured - AI enrichment skipped'] : [])
+        ...(!hasNVIDIAKey ? ['NVIDIA API key not configured - AI enrichment skipped'] : [])
       ].filter(Boolean)
     });
   } catch (error) {
-    console.error('API scrape error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to scrape website';
+    console.error('API scrape error:', {
+      message: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to scrape website',
+        error: errorMessage,
       },
       { status: 500 }
     );

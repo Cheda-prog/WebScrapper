@@ -14,6 +14,13 @@ export interface Positioning {
   foundingStory?: string;
   valueProposition?: string;
   missionStatement?: string;
+  aiGeneratedPitch?: string;
+}
+
+export interface AIEnrichments {
+  aiGeneratedPitch?: string;
+  enrichedFields?: string[];
+  enrichedAt?: string;
 }
 
 export interface Customer {
@@ -97,6 +104,7 @@ export interface KnowledgeBase {
   trustSignals?: TrustSignal[];
   marketingCTAs?: string[];
   blogTopics?: string[];
+  aiEnrichments?: AIEnrichments;
   rawMetadata?: {
     title?: string;
     metaDescription?: string;

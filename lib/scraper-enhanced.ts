@@ -13,288 +13,151 @@ import type {
   Customer,
 } from "@/types/knowledge";
 
-/**
- * Enhanced web scraper that extracts comprehensive business intelligence
- * Includes detailed company info, branding, market analysis, and more
- */
 export async function scrapeWebsiteEnhanced(url: string): Promise<KnowledgeBase> {
   const maxRetries = 3;
   let lastError: Error | null = null;
-  
   const normalizedUrl = url.startsWith("http") ? url : `https://${url}`;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       if (attempt > 1) {
-        const delay = Math.min(1000 * Math.pow(2, attempt - 2), 5000);
-        console.log(`Retry attempt ${attempt}/${maxRetries} after ${delay}ms delay`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt - 2), 5000)));
       }
 
       const response = await axios.get(normalizedUrl, {
         headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "en-US,en;q=0.9",
-          "Accept-Encoding": "gzip, deflate, br",
-          "Connection": "keep-alive",
-          "Upgrade-Insecure-Requests": "1",
-          "Sec-Fetch-Dest": "document",
-          "Sec-Fetch-Mode": "navigate",
-          "Sec-Fetch-Site": "none",
-          "Sec-Fetch-User": "?1",
-          "Cache-Control": "max-age=0",
-          "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-          "sec-ch-ua-mobile": "?0",
-          "sec-ch-ua-platform": '"Windows"',
         },
         timeout: 30000,
         maxRedirects: 5,
         validateStatus: (status) => status >= 200 && status < 400,
       });
 
-      const html = response.data;
-      const $ = cheerio.load(html);
+      const $ = cheerio.load(response.data);
 
-      // Enhanced extraction with more detail
-      const companyInfo = extractEnhancedCompanyInfo($, normalizedUrl);
-      const positioning = extractEnhancedPositioning($);
-      const customers = extractEnhancedCustomers($);
-      const branding = extractEnhancedBranding($, html);
-      const onlinePresence = extractEnhancedOnlinePresence($);
-      const keyPeople = extractEnhancedKeyPeople($);
-      const products = extractEnhancedProducts($);
-      const testimonials = extractEnhancedTestimonials($);
-      const faqs = extractFAQs($);
-      const marketingCTAs = extractEnhancedCTAs($);
-      const trustSignals = extractEnhancedTrustSignals($);
-      const rawMetadata = extractEnhancedMetadata($);
-
-      const knowledgeBase: KnowledgeBase = {
+      return {
         sourceUrl: normalizedUrl,
         scrapedAt: new Date().toISOString(),
-        companyInfo,
-        positioning,
-        customers,
-        branding,
-        onlinePresence,
-        keyPeople,
-        products,
-        testimonials,
-        faqs,
-        marketingCTAs,
-        trustSignals,
-        rawMetadata,
+        companyInfo: extractCompanyInfo($, normalizedUrl),
+        positioning: extractPositioning($),
+        customers: extractCustomers($),
+        branding: extractBranding($),
+        onlinePresence: extractOnlinePresence($),
+        keyPeople: extractKeyPeople($),
+        products: extractProducts($),
+        testimonials: extractTestimonials($),
+        faqs: extractFAQs($),
+        competitors: extractCompetitors($),
+        marketingCTAs: extractCTAs($),
+        trustSignals: extractTrustSignals($),
+        blogTopics: extractBlogTopics($),
+        rawMetadata: extractMetadata($),
       };
-
-      return knowledgeBase;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error("Unknown error");
       
       if (axios.isAxiosError(error)) {
-        const axiosError = error as AxiosError;
-        const status = axiosError.response?.status;
+        const status = error.response?.status;
+        console.error(`Scraping failed (attempt ${attempt}/${maxRetries}):`, { status, message: error.message });
         
-        console.error(`Scraping attempt ${attempt}/${maxRetries} failed:`, {
-          status,
-          message: axiosError.message,
-          url: normalizedUrl,
-        });
-
-        if (status === 444 || status === 403) {
-          lastError = new Error(
-            `The website is blocking scraping requests (HTTP ${status}). ` +
-            `This website has anti-bot protection. Consider using:\n` +
-            `1. A scraping API service (set SCRAPER_API_KEY env variable)\n` +
-            `2. Puppeteer/Playwright for JavaScript rendering\n` +
-            `3. Residential proxies\n` +
-            `Current attempt: ${attempt}/${maxRetries}`
-          );
+        if (status === 403 || status === 444) {
+          throw new Error(`Website blocking requests (HTTP ${status}). Try: Puppeteer, proxies, or scraping API.`);
         }
-      } else {
-        console.error(`Scraping attempt ${attempt}/${maxRetries} failed:`, lastError.message);
+      } else if (lastError.message.includes('ENOTFOUND') || lastError.message.includes('ECONNREFUSED')) {
+        throw new Error(`Cannot reach "${normalizedUrl}". Check if site is valid and online.`);
       }
       
-      if (attempt === maxRetries) {
-        throw lastError;
-      }
+      if (attempt === maxRetries) throw lastError;
     }
   }
-
-  throw lastError || new Error("Failed to scrape website: Unknown error");
+  throw lastError || new Error("Scraping failed");
 }
 
-// ============================================================================
-// ENHANCED EXTRACTION FUNCTIONS
-// ============================================================================
-
-function extractEnhancedCompanyInfo($: cheerio.CheerioAPI, url: string): CompanyInfo {
-  const name =
-    $('meta[property="og:site_name"]').attr("content") ||
-    $("title").text().split("|")[0].split("-")[0].trim() ||
-    "Unknown Company";
-
-  const description =
-    $('meta[name="description"]').attr("content") ||
-    $('meta[property="og:description"]').attr("content") ||
-    $('p[class*="description" i], p[class*="intro" i]').first().text().trim() ||
-    "";
-
-  // Extract business model
-  const businessModel = extractBusinessModel($);
-  
-  // Extract founding year
-  const foundedYear = extractFoundingYear($);
-  
-  // Extract company size
-  const companySize = extractCompanySize($);
-
+function extractCompanyInfo($: cheerio.CheerioAPI, url: string): CompanyInfo {
   return {
-    name,
-    description,
+    name: $('meta[property="og:site_name"]').attr("content") || 
+          $("title").text().split(/[|\-]/)[0].trim() || 
+          "Unknown Company",
+    description: $('meta[name="description"]').attr("content") || 
+                 $('meta[property="og:description"]').attr("content") || "",
     website: url,
-    industry: findIndustryEnhanced($),
-    businessModel,
-    location: findLocationsEnhanced($),
-    foundedYear,
-    companySize,
+    industry: findIndustry($),
+    businessModel: findBusinessModel($),
+    location: findLocations($),
+    foundedYear: findFoundingYear($),
+    companySize: findCompanySize($),
   };
 }
 
-function extractEnhancedPositioning($: cheerio.CheerioAPI): Positioning {
-  // Extract company pitch / tagline
-  const h1Texts = $("h1")
-    .map((_, el) => $(el).text().trim())
-    .get();
-  const companyPitch =
-    h1Texts[0] || 
-    $('meta[property="og:description"]').attr("content") || 
-    $('.hero h2, .tagline, [class*="slogan" i]').first().text().trim() ||
-    "";
-
-  // Extract founding story
-  const foundingStory = extractFoundingStory($);
-
-  // Enhanced value proposition extraction
-  const valueProposition = extractValueProposition($);
-
-  // Mission statement
-  const missionStatement = findMissionStatement($);
-
+function extractPositioning($: cheerio.CheerioAPI): Positioning {
+  const h1Text = $("h1").first().text().trim();
   return {
-    companyPitch,
-    foundingStory,
-    valueProposition,
-    missionStatement,
+    companyPitch: h1Text || $('meta[property="og:description"]').attr("content") || "",
+    valueProposition: findValueProposition($),
+    missionStatement: findMissionStatement($),
+    foundingStory: findFoundingStory($),
   };
 }
 
-function extractEnhancedCustomers($: cheerio.CheerioAPI): Customer {
+function extractCustomers($: cheerio.CheerioAPI): Customer {
   return {
-    targetAudience: findTargetAudienceEnhanced($),
-    customerNeeds: findCustomerNeedsEnhanced($),
-    personas: extractPersonas($),
+    targetAudience: findTargetAudience($),
+    customerNeeds: findCustomerNeeds($),
+    personas: findPersonas($),
   };
 }
 
-function extractEnhancedBranding($: cheerio.CheerioAPI, html: string): Branding {
-  // Extract colors from CSS
+function extractBranding($: cheerio.CheerioAPI): Branding {
+  const html = $.html();
   const colors: string[] = [];
-  const styleTag = $("style").text();
-  const inlineStyles = html.match(/style="[^"]*"/g) || [];
-  const allStyles = styleTag + " " + inlineStyles.join(" ");
   
   // Extract hex colors
-  const colorMatches = allStyles.match(/#[0-9A-Fa-f]{6}/g);
-  if (colorMatches) {
-    colors.push(...new Set(colorMatches).values());
-  }
+  const hexMatches = html.match(/#[0-9A-Fa-f]{6}/g);
+  if (hexMatches) colors.push(...new Set(hexMatches));
   
-  // Extract RGB colors and convert to hex
-  const rgbMatches = allStyles.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/g);
-  if (rgbMatches) {
-    rgbMatches.forEach(rgb => {
-      const match = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-      if (match) {
-        const hex = `#${Number(match[1]).toString(16).padStart(2, '0')}${Number(match[2]).toString(16).padStart(2, '0')}${Number(match[3]).toString(16).padStart(2, '0')}`;
-        colors.push(hex);
-      }
-    });
-  }
-
   // Extract fonts
-  const fonts: string[] = [];
-  const fontFamilyMatches = allStyles.match(/font-family:\s*([^;}"]+)/gi);
-  if (fontFamilyMatches) {
-    fontFamilyMatches.forEach(font => {
-      const match = font.match(/font-family:\s*([^;}"]+)/i);
-      if (match) {
-        const fontName = match[1].replace(/['"]/g, '').split(',')[0].trim();
-        if (fontName && !fontName.includes('sans-serif') && !fontName.includes('serif')) {
-          fonts.push(fontName);
-        }
-      }
-    });
-  }
-
-  // Extract writing style
-  const writingStyle = extractWritingStyle($);
+  const fontMatches = html.match(/font-family:\s*([^;}"]+)/gi) || [];
+  const fonts = fontMatches
+    .map(f => f.match(/font-family:\s*([^;}"]+)/i)?.[1]?.replace(/['"]/g, '').split(',')[0] || '')
+    .filter(f => f && !f.includes('sans-serif') && !f.includes('serif'))
+    .slice(0, 5) as string[];
 
   return {
-    primaryColors: [...new Set(colors)].slice(0, 10),
-    fonts: [...new Set(fonts)].slice(0, 5),
-    logoUrl: extractLogo($),
-    writingStyle,
-    toneOfVoice: extractToneOfVoice($),
+    primaryColors: colors.slice(0, 10),
+    fonts: [...new Set(fonts)],
+    logoUrl: findLogo($),
+    toneOfVoice: findTone($),
+    writingStyle: findWritingStyle($),
   };
 }
 
-function extractEnhancedOnlinePresence($: cheerio.CheerioAPI): OnlinePresence {
+function extractOnlinePresence($: cheerio.CheerioAPI): OnlinePresence {
   const socialMedia: { platform: string; url: string }[] = [];
-
-  // More comprehensive social media detection
-  const socialPatterns = {
+  const socialPatterns: Record<string, string[]> = {
     'Facebook': ['facebook.com', 'fb.com'],
     'Twitter/X': ['twitter.com', 'x.com'],
     'LinkedIn': ['linkedin.com'],
     'Instagram': ['instagram.com'],
     'YouTube': ['youtube.com', 'youtu.be'],
-    'TikTok': ['tiktok.com'],
-    'Pinterest': ['pinterest.com'],
-    'GitHub': ['github.com'],
   };
 
   $('a[href]').each((_, el) => {
-    const href = $(el).attr('href');
-    if (href) {
-      for (const [platform, patterns] of Object.entries(socialPatterns)) {
-        if (patterns.some(pattern => href.includes(pattern))) {
-          // Avoid duplicates
-          if (!socialMedia.find(sm => sm.url === href)) {
-            socialMedia.push({ platform, url: href });
-          }
-          break;
-        }
+    const href = $(el).attr('href') || '';
+    for (const [platform, patterns] of Object.entries(socialPatterns)) {
+      if (patterns.some(p => href.includes(p)) && !socialMedia.find(s => s.url === href)) {
+        socialMedia.push({ platform, url: href });
       }
     }
   });
 
-  // Extract email addresses
   const emails: string[] = [];
   $('a[href^="mailto:"]').each((_, el) => {
     const email = $(el).attr("href")?.replace("mailto:", "");
     if (email) emails.push(email);
   });
-  
-  // Also find emails in text
-  const bodyText = $('body').text();
-  const emailMatches = bodyText.match(/[\w.-]+@[\w.-]+\.\w+/g);
-  if (emailMatches) {
-    emails.push(...emailMatches);
-  }
 
-  // Extract phone numbers
   const phones: string[] = [];
   $('a[href^="tel:"]').each((_, el) => {
     const phone = $(el).attr("href")?.replace("tel:", "");
@@ -302,207 +165,240 @@ function extractEnhancedOnlinePresence($: cheerio.CheerioAPI): OnlinePresence {
   });
 
   return {
-    socialMedia: socialMedia.filter(
-      (v, i, a) => a.findIndex((t) => t.url === v.url) === i,
-    ),
+    socialMedia,
     email: emails[0],
     phone: phones[0],
   };
 }
 
-function extractEnhancedKeyPeople($: cheerio.CheerioAPI): KeyPerson[] {
+function extractKeyPeople($: cheerio.CheerioAPI): KeyPerson[] {
   const people: KeyPerson[] = [];
+  const selectors = '[class*="team" i], [class*="about" i], [class*="leadership" i], [class*="founder" i]';
 
-  // Look for team sections
-  $('[class*="team" i], [class*="about" i], [class*="leadership" i], [class*="founder" i]').each((_, section) => {
-    $(section).find('[class*="member" i], [class*="person" i], .card, article').each((_, card) => {
-      const name = $(card).find('h1, h2, h3, h4, h5, .name, [class*="name" i]').first().text().trim();
-      const role = $(card).find('.role, .title, [class*="role" i], [class*="title" i], [class*="position" i]').first().text().trim();
-      const bio = $(card).find('p, .bio, [class*="bio" i], [class*="description" i]').first().text().trim();
-      const imageUrl = $(card).find('img').first().attr('src');
-
+  $(selectors).each((_, section) => {
+    $(section).find('[class*="member" i], .card, article').each((_, card) => {
+      const name = $(card).find('h1, h2, h3, h4, .name').first().text().trim();
+      const role = $(card).find('.role, .title, [class*="role" i]').first().text().trim();
+      const bio = $(card).find('p').first().text().trim();
+      
       if (name && name.length > 2) {
         people.push({
           name,
           role: role || "Team Member",
           bio: bio || undefined,
-          imageUrl: imageUrl || undefined,
+          imageUrl: $(card).find('img').first().attr('src'),
         });
       }
     });
   });
-
   return people.slice(0, 20);
 }
 
-function extractEnhancedProducts($: cheerio.CheerioAPI): Product[] {
+function extractProducts($: cheerio.CheerioAPI): Product[] {
   const products: Product[] = [];
+  const selectors = '[class*="product" i], [class*="service" i], [class*="offering" i]';
 
-  // Look for product/service sections
-  $('[class*="product" i], [class*="service" i], [class*="offering" i], [class*="pricing" i], [class*="plan" i]').each(
-    (_, el) => {
-      const name = $(el).find("h1, h2, h3, h4").first().text().trim();
-      const description = $(el).find("p, .description, [class*='description' i]").first().text().trim();
-      
-      // Extract features
-      const features: string[] = [];
-      $(el).find("ul li, ol li, [class*='feature' i]").each((_, li) => {
-        const feature = $(li).text().trim();
-        if (feature && feature.length > 3 && feature.length < 200) {
-          features.push(feature);
-        }
+  $(selectors).each((_, el) => {
+    const name = $(el).find("h1, h2, h3, h4").first().text().trim();
+    const description = $(el).find("p").first().text().trim();
+    const features: string[] = [];
+    
+    $(el).find("ul li").each((_, li) => {
+      const feature = $(li).text().trim();
+      if (feature.length > 3 && feature.length < 200) features.push(feature);
+    });
+
+    if (name && name.length > 3) {
+      products.push({
+        name,
+        description: description || undefined,
+        features: features.slice(0, 10),
+        pricing: $(el).find('[class*="price" i]').first().text().trim() || undefined,
       });
-
-      // Extract pricing
-      const pricingText = $(el).find('[class*="price" i], .cost, .amount').first().text().trim();
-      
-      // Extract category
-      const category = $(el).closest('[class*="category" i]').find('h2, h3').first().text().trim() ||
-                      $(el).attr('data-category') || undefined;
-
-      if (name && name.length > 3) {
-        products.push({
-          name,
-          description: description || undefined,
-          features: features.slice(0, 10),
-          pricing: pricingText || undefined,
-          category: category || undefined,
-        });
-      }
-    },
-  );
-
+    }
+  });
   return products.slice(0, 25);
 }
 
-function extractEnhancedTestimonials($: cheerio.CheerioAPI): Testimonial[] {
+function extractTestimonials($: cheerio.CheerioAPI): Testimonial[] {
   const testimonials: Testimonial[] = [];
+  const selectors = '[class*="testimonial" i], [class*="review" i], [class*="quote" i]';
 
-  $('[class*="testimonial" i], [class*="review" i], [class*="quote" i], [class*="feedback" i]').each(
-    (_, el) => {
-      const content = $(el).find("p, blockquote, .content, [class*='content' i], [class*='text' i]").first().text().trim();
-      const author = $(el)
-        .find('[class*="author" i], [class*="name" i], .name, cite')
-        .first()
-        .text()
-        .trim() || "Anonymous";
-      
-      const role = $(el)
-        .find('[class*="role" i], [class*="title" i], [class*="company" i]')
-        .first()
-        .text()
-        .trim();
-
-      // Try to extract rating
-      const ratingStars = $(el).find('[class*="star" i], [class*="rating" i]').length;
-      const ratingText = $(el).find('[class*="rating" i]').text();
-      const ratingMatch = ratingText.match(/(\d+(\.\d+)?)\s*(\/|out of)\s*(\d+)/);
-      const rating = ratingMatch ? parseFloat(ratingMatch[1]) : (ratingStars > 0 ? ratingStars : undefined);
-
-      if (content && content.length > 20) {
-        testimonials.push({
-          author,
-          role: role || undefined,
-          content,
-          rating,
-        });
-      }
-    },
-  );
-
+  $(selectors).each((_, el) => {
+    const content = $(el).find("p, blockquote").first().text().trim();
+    const author = $(el).find('[class*="author" i], [class*="name" i]').first().text().trim() || "Anonymous";
+    
+    if (content && content.length > 20) {
+      testimonials.push({ author, content, role: $(el).find('[class*="role" i]').first().text().trim() || undefined });
+    }
+  });
   return testimonials.slice(0, 20);
 }
 
 function extractFAQs($: cheerio.CheerioAPI): FAQ[] {
   const faqs: FAQ[] = [];
+  const selectors = '[class*="faq" i], details, [class*="accordion" i]';
 
-  $('[class*="faq" i], [itemtype*="FAQPage"], [class*="accordion" i]').each((_, section) => {
-    $(section)
-      .find('details, [class*="question" i], [class*="item" i], .accordion-item')
-      .each((_, el) => {
-        const question = $(el)
-          .find('summary, [class*="question" i], h3, h4, .title, dt')
-          .first()
-          .text()
-          .trim();
-        const answer = $(el)
-          .find('p, [class*="answer" i], dd, .content')
-          .first()
-          .text()
-          .trim();
-
-        if (question && answer) {
-          faqs.push({ question, answer });
-        }
-      });
+  $(selectors).each((_, el) => {
+    const question = $(el).find('summary, h3, h4, [class*="question" i]').first().text().trim();
+    const answer = $(el).find('p').first().text().trim();
+    if (question && answer) faqs.push({ question, answer });
   });
-
   return faqs.slice(0, 30);
 }
 
-function extractEnhancedCTAs($: cheerio.CheerioAPI): string[] {
-  const ctas: string[] = [];
+function extractCompetitors($: cheerio.CheerioAPI): { name: string; website?: string; differentiator?: string }[] {
+  const competitors: { name: string; website?: string; differentiator?: string }[] = [];
+  const text = $("body").text().toLowerCase();
+  
+  // Look for competitor mentions in common patterns
+  const competitorPatterns = [
+    /vs\.?\s+([A-Z][a-zA-Z\s&]+?)(?:[,.]|\s+and|\s+or)/g,
+    /compare[sd]?\s+to\s+([A-Z][a-zA-Z\s&]+?)(?:[,.]|\s+and|\s+or)/g,
+    /alternative\s+to\s+([A-Z][a-zA-Z\s&]+?)(?:[,.]|\s+and|\s+or)/g,
+    /unlike\s+([A-Z][a-zA-Z\s&]+?)(?:[,.]|\s+and|\s+or)/g,
+    /instead\s+of\s+([A-Z][a-zA-Z\s&]+?)(?:[,.]|\s+and|\s+or)/g
+  ];
 
-  $('button, a[class*="button" i], a[class*="cta" i], a[class*="btn" i], [role="button"], input[type="submit"]').each((_, el) => {
-    const text = $(el).text().trim() || $(el).attr('value') || $(el).attr('aria-label') || '';
-    if (text && text.length > 2 && text.length < 100) {
-      ctas.push(text);
+  // Search for competitor sections
+  $('[class*="competitor" i], [class*="comparison" i], [class*="alternative" i]').each((_, el) => {
+    const sectionText = $(el).text();
+    
+    // Extract company names from headings and links
+    $(el).find('h3, h4, a[href*="://"]').each((_, item) => {
+      const name = $(item).text().trim();
+      const url = $(item).is('a') ? $(item).attr('href') : undefined;
+      
+      if (name && name.length > 2 && name.length < 50 && /^[A-Z]/.test(name)) {
+        // Avoid generic terms
+        const genericTerms = ['compare', 'vs', 'alternative', 'solution', 'software', 'tool', 'service'];
+        if (!genericTerms.some(term => name.toLowerCase().includes(term))) {
+          competitors.push({
+            name: name.replace(/['"]/g, ''),
+            website: url?.startsWith('http') ? url : undefined,
+            differentiator: findDifferentiator($, name)
+          });
+        }
+      }
+    });
+  });
+
+  // Extract from text patterns
+  const fullText = $("body").text();
+  for (const pattern of competitorPatterns) {
+    let match;
+    while ((match = pattern.exec(fullText)) !== null && competitors.length < 15) {
+      const name = match[1].trim().replace(/['"]/g, '');
+      if (name.length > 2 && name.length < 50 && !competitors.find(c => c.name === name)) {
+        competitors.push({
+          name,
+          differentiator: findDifferentiator($, name)
+        });
+      }
+    }
+  }
+
+  return [...new Map(competitors.map(c => [c.name, c])).values()].slice(0, 10);
+}
+
+function extractBlogTopics($: cheerio.CheerioAPI): string[] {
+  const topics = new Set<string>();
+  
+  // Look for blog sections or recent posts
+  const blogSelectors = [
+    '[class*="blog" i]',
+    '[class*="article" i]', 
+    '[class*="post" i]',
+    '[class*="news" i]',
+    '[class*="insights" i]',
+    '[class*="resources" i]'
+  ];
+
+  for (const selector of blogSelectors) {
+    $(selector).each((_, section) => {
+      // Extract topics from headings
+      $(section).find('h1, h2, h3, h4, .title, [class*="title" i]').each((_, heading) => {
+        const topic = $(heading).text().trim();
+        if (topic && topic.length > 5 && topic.length < 100) {
+          // Clean up common prefixes/suffixes
+          const cleanTopic = topic
+            .replace(/^(blog|post|article):\s*/i, '')
+            .replace(/\s*-\s*(read more|learn more|view post)$/i, '')
+            .replace(/^\d+\.\s*/, '')  // Remove numbering
+            .trim();
+          
+          if (cleanTopic.length > 5) {
+            topics.add(cleanTopic);
+          }
+        }
+      });
+
+      // Extract topics from article links
+      $(section).find('a').each((_, link) => {
+        const text = $(link).text().trim();
+        const href = $(link).attr('href');
+        
+        if (text && text.length > 10 && text.length < 100 && 
+            href && (href.includes('/blog') || href.includes('/article') || href.includes('/post'))) {
+          topics.add(text.replace(/^(read|view|see):\s*/i, '').trim());
+        }
+      });
+    });
+  }
+
+  // Extract from meta tags that might indicate blog topics
+  $('meta[name="keywords"]').each((_, meta) => {
+    const keywords = $(meta).attr('content');
+    if (keywords) {
+      keywords.split(',').forEach(keyword => {
+        const topic = keyword.trim();
+        if (topic.length > 3 && topic.length < 50) {
+          topics.add(topic);
+        }
+      });
     }
   });
 
+  // Look for topic tags or categories
+  $('[class*="tag" i], [class*="category" i], [class*="topic" i]').each((_, el) => {
+    const topic = $(el).text().trim();
+    if (topic && topic.length > 3 && topic.length < 50) {
+      topics.add(topic);
+    }
+  });
+
+  return Array.from(topics).slice(0, 20);
+}
+
+function extractCTAs($: cheerio.CheerioAPI): string[] {
+  const ctas: string[] = [];
+  $('button, a[class*="button" i], a[class*="cta" i], a[class*="btn" i]').each((_, el) => {
+    const text = $(el).text().trim() || $(el).attr('value') || '';
+    if (text.length > 2 && text.length < 100) ctas.push(text);
+  });
   return [...new Set(ctas)].slice(0, 30);
 }
 
-function extractEnhancedTrustSignals($: cheerio.CheerioAPI) {
-  const trustSignals: { type: string; name: string; description?: string }[] = [];
-
-  // Awards
-  $('[class*="award" i], [class*="badge" i]').each((_, el) => {
-    const name = $(el).text().trim() || $(el).attr('alt') || $(el).attr('title') || '';
-    if (name) {
-      trustSignals.push({
-        type: "award",
-        name,
-      });
-    }
-  });
-
-  // Certifications
-  $('[class*="certification" i], [class*="certified" i]').each((_, el) => {
-    const name = $(el).text().trim();
-    if (name) {
-      trustSignals.push({
-        type: "certification",
-        name,
-      });
-    }
-  });
-
-  // Partnerships
-  $('[class*="partner" i], [class*="client" i], [class*="logo" i]').each((_, el) => {
+function extractTrustSignals($: cheerio.CheerioAPI) {
+  const signals: { type: string; name: string }[] = [];
+  
+  $('[class*="award" i]').each((_, el) => { signals.push({ type: "award", name: $(el).text().trim() }); });
+  $('[class*="certified" i]').each((_, el) => { signals.push({ type: "certification", name: $(el).text().trim() }); });
+  $('[class*="partner" i]').each((_, el) => {
     const name = $(el).find('img').attr('alt') || $(el).text().trim();
-    if (name && name.length > 2) {
-      trustSignals.push({
-        type: "partnership",
-        name,
-      });
-    }
+    if (name) signals.push({ type: "partnership", name });
   });
-
-  return trustSignals.slice(0, 25);
+  
+  return signals.slice(0, 25);
 }
 
-function extractEnhancedMetadata($: cheerio.CheerioAPI) {
+function extractMetadata($: cheerio.CheerioAPI) {
   const ogTags: Record<string, string> = {};
-
   $('meta[property^="og:"]').each((_, el) => {
-    const property = $(el).attr("property");
+    const prop = $(el).attr("property");
     const content = $(el).attr("content");
-    if (property && content) {
-      ogTags[property] = content;
-    }
+    if (prop && content) ogTags[prop] = content;
   });
-
   return {
     title: $("title").text(),
     metaDescription: $('meta[name="description"]').attr("content"),
@@ -510,317 +406,147 @@ function extractEnhancedMetadata($: cheerio.CheerioAPI) {
   };
 }
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
+// ============== HELPER FUNCTIONS ==============
 
-function findIndustryEnhanced($: cheerio.CheerioAPI): string | undefined {
-  const industries = [
-    "Accounting", "Tax Services", "Financial Services", "Bookkeeping",
-    "Technology", "Software", "SaaS", "IT Services",
-    "Finance", "Banking", "Investment",
-    "Healthcare", "Medical", "Dental", "Pharmacy",
-    "E-commerce", "Retail", "Online Store",
-    "Marketing", "Advertising", "PR", "Digital Marketing",
-    "Education", "Training", "E-learning",
-    "Real Estate", "Property Management",
-    "Legal", "Law", "Attorney",
-    "Construction", "Architecture", "Engineering",
-    "Restaurant", "Food Service", "Catering",
-    "Manufacturing", "Industrial",
-    "Consulting", "Professional Services",
-  ];
+function findIndustry($: cheerio.CheerioAPI): string | undefined {
+  const industries = ["Accounting", "Tax Services", "Technology", "SaaS", "Finance", "Healthcare", 
+    "E-commerce", "Marketing", "Education", "Real Estate", "Legal", "Construction", "Restaurant"];
   
-  const pageText = $("body").text().toLowerCase();
-  const title = $("title").text().toLowerCase();
-  const description = $('meta[name="description"]').attr("content")?.toLowerCase() || '';
+  const text = ($("title").text() + " " + ($('meta[name="description"]').attr("content") || "")).toLowerCase();
+  return industries.find(ind => text.includes(ind.toLowerCase()));
+}
 
-  for (const industry of industries) {
-    const industryLower = industry.toLowerCase();
-    if (title.includes(industryLower) || description.includes(industryLower)) {
-      return industry;
-    }
-  }
-
-  for (const industry of industries) {
-    if (pageText.includes(industry.toLowerCase())) {
-      return industry;
-    }
-  }
-  
+function findBusinessModel($: cheerio.CheerioAPI): string | undefined {
+  const text = $("body").text().toLowerCase();
+  if (text.includes('subscription') || text.includes('saas')) return 'SaaS';
+  if (text.includes('b2b') || text.includes('enterprise')) return 'B2B';
+  if (text.includes('e-commerce') || text.includes('online store')) return 'E-commerce';
   return undefined;
 }
 
-function findLocationsEnhanced($: cheerio.CheerioAPI): string[] | undefined {
+function findLocations($: cheerio.CheerioAPI): string[] | undefined {
   const locations: string[] = [];
-  
-  // Look for address elements
-  $('[class*="address" i], address, [itemtype*="PostalAddress"]').each((_, el) => {
+  $('[class*="address" i], address').each((_, el) => {
     const text = $(el).text().trim();
     if (text) locations.push(text);
   });
-
-  // Look for location mentions in text
-  const bodyText = $('body').text();
-  const locationPatterns = [
-    /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\s*\d{5}\b/g, // City, ST 12345
-    /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z][a-z]+)\b/g, // City, State
-  ];
-
-  locationPatterns.forEach(pattern => {
-    const matches = bodyText.matchAll(pattern);
-    for (const match of matches) {
-      if (match[0]) locations.push(match[0]);
-    }
-  });
-
   return locations.length > 0 ? [...new Set(locations)].slice(0, 5) : undefined;
 }
 
-function extractBusinessModel($: cheerio.CheerioAPI): string | undefined {
-  const pageText = $('body').text().toLowerCase();
-  
-  const modelKeywords = {
-    'B2B': ['b2b', 'business to business', 'enterprise', 'for businesses'],
-    'B2C': ['b2c', 'business to consumer', 'for individuals', 'for consumers'],
-    'SaaS': ['saas', 'software as a service', 'subscription', 'cloud-based'],
-    'Marketplace': ['marketplace', 'platform', 'connect buyers and sellers'],
-    'Service Provider': ['services', 'consulting', 'professional services'],
-    'E-commerce': ['online store', 'shop online', 'e-commerce'],
-  };
-
-  for (const [model, keywords] of Object.entries(modelKeywords)) {
-    if (keywords.some(keyword => pageText.includes(keyword))) {
-      return model;
-    }
+function findFoundingYear($: cheerio.CheerioAPI): string | undefined {
+  const text = $("body").text();
+  const match = text.match(/(?:founded|established|since|©)\s*(\d{4})/i);
+  if (match) {
+    const year = parseInt(match[1]);
+    if (year >= 1800 && year <= new Date().getFullYear()) return match[1];
   }
-
   return undefined;
 }
 
-function extractFoundingYear($: cheerio.CheerioAPI): string | undefined {
-  const pageText = $('body').text();
-  
-  // Look for patterns like "Founded in 2003", "Since 2003", "Est. 2003"
-  const yearPatterns = [
-    /(?:founded|established|since|est\.?)\s+(?:in\s+)?(\d{4})/i,
-    /©\s*(\d{4})/,
-  ];
-
-  for (const pattern of yearPatterns) {
-    const match = pageText.match(pattern);
-    if (match && match[1]) {
-      const year = parseInt(match[1]);
-      if (year >= 1800 && year <= new Date().getFullYear()) {
-        return match[1];
-      }
-    }
-  }
-
-  return undefined;
+function findCompanySize($: cheerio.CheerioAPI): string | undefined {
+  const text = $("body").text();
+  const match = text.match(/(\d+)\s*[-–]\s*(\d+)\s+employees/i) || 
+                text.match(/team of (\d+)/i);
+  return match ? match[0] : undefined;
 }
 
-function extractCompanySize($: cheerio.CheerioAPI): string | undefined {
-  const pageText = $('body').text().toLowerCase();
-  
-  const sizePatterns = [
-    /(\d+)\s*[-–]\s*(\d+)\s+employees/i,
-    /team of (\d+)/i,
-    /(\d+)\s+team members/i,
-  ];
-
-  for (const pattern of sizePatterns) {
-    const match = pageText.match(pattern);
-    if (match) {
-      return match[0];
-    }
+function findValueProposition($: cheerio.CheerioAPI): string | undefined {
+  const keywords = ["we help", "we provide", "we offer", "we specialize", "our mission"];
+  for (const kw of keywords) {
+    const p = $("p").filter((_, el) => $(el).text().toLowerCase().includes(kw)).first();
+    const text = p.text().trim();
+    if (text.length > 50 && text.length < 500) return text;
   }
-
-  return undefined;
-}
-
-function extractFoundingStory($: cheerio.CheerioAPI): string | undefined {
-  // Look for sections about history, story, or founding
-  const storyElements = $('[class*="story" i], [class*="history" i], [class*="about" i], [id*="story" i]');
-  
-  let story = '';
-  storyElements.each((_, el) => {
-    const text = $(el).find('p').first().text().trim();
-    if (text.length > 100 && text.length < 1000) {
-      story = text;
-      return false; // break
-    }
-  });
-
-  return story || undefined;
-}
-
-function extractValueProposition($: cheerio.CheerioAPI): string | undefined {
-  const keywords = [
-    "we help", "we provide", "we offer", "we enable", "we deliver",
-    "our mission", "our goal", "we specialize", "committed to",
-  ];
-  
-  const paragraphs = $("p");
-
-  for (let i = 0; i < paragraphs.length; i++) {
-    const text = $(paragraphs[i]).text();
-    const textLower = text.toLowerCase();
-    
-    for (const keyword of keywords) {
-      if (textLower.includes(keyword) && text.length > 50 && text.length < 500) {
-        return text.trim();
-      }
-    }
-  }
-  
   return undefined;
 }
 
 function findMissionStatement($: cheerio.CheerioAPI): string | undefined {
-  const missionElements = $('[class*="mission" i], [id*="mission" i]');
-  const mission = missionElements.find('p').first().text().trim();
+  const mission = $('[class*="mission" i]').find('p').first().text().trim();
   return mission.length > 20 ? mission : undefined;
 }
 
-function findTargetAudienceEnhanced($: cheerio.CheerioAPI): string[] | undefined {
-  const audiences: string[] = [];
-  const keywords = [
-    "for businesses", "for entrepreneurs", "for startups", "for enterprises",
-    "for individuals", "for families", "for professionals",
-    "for developers", "for marketers", "for designers",
-    "for teams", "for organizations", "for agencies",
-    "for small business", "for freelancers",
-  ];
-  
-  const pageText = $("body").text().toLowerCase();
-
-  keywords.forEach((keyword) => {
-    if (pageText.includes(keyword)) {
-      audiences.push(keyword.replace("for ", ""));
-    }
-  });
-
-  return audiences.length > 0 ? audiences : undefined;
+function findFoundingStory($: cheerio.CheerioAPI): string | undefined {
+  const story = $('[class*="story" i], [class*="history" i]').find('p').first().text().trim();
+  return story.length > 100 ? story : undefined;
 }
 
-function findCustomerNeedsEnhanced($: cheerio.CheerioAPI): string[] | undefined {
+function findTargetAudience($: cheerio.CheerioAPI): string[] | undefined {
+  const keywords = ["for businesses", "for entrepreneurs", "for individuals", "for developers", "for teams"];
+  const text = $("body").text().toLowerCase();
+  const found = keywords.filter(kw => text.includes(kw)).map(kw => kw.replace("for ", ""));
+  return found.length > 0 ? found : undefined;
+}
+
+function findCustomerNeeds($: cheerio.CheerioAPI): string[] | undefined {
   const needs: string[] = [];
-  
-  // Look for problem/challenge/pain sections
-  const problemKeywords = $("h2, h3, p").filter((_, el) => {
+  $("h2, h3, p").filter((_, el) => {
     const text = $(el).text().toLowerCase();
-    return (
-      text.includes("problem") ||
-      text.includes("challenge") ||
-      text.includes("pain") ||
-      text.includes("struggle") ||
-      text.includes("difficulty") ||
-      text.includes("need")
-    );
-  });
-
-  problemKeywords.each((_, el) => {
+    return text.includes("problem") || text.includes("challenge") || text.includes("need");
+  }).each((_, el) => {
     const text = $(el).text().trim();
-    if (text.length > 10 && text.length < 300) {
-      needs.push(text);
-    }
+    if (text.length > 10 && text.length < 300) needs.push(text);
   });
-
-  return needs.length > 0 ? needs.slice(0, 10) : undefined;
+  return needs.slice(0, 10);
 }
 
-function extractPersonas($: cheerio.CheerioAPI): string[] | undefined {
-  const personas: string[] = [];
-  const pageText = $('body').text();
-  
-  // Look for "ideal customer" or "perfect for" sections
-  const personaPatterns = [
-    /(?:ideal|perfect)\s+(?:for|customer):\s*([^.!?]+)/gi,
-    /(?:who (?:we serve|this is for)):\s*([^.!?]+)/gi,
-  ];
+function findPersonas($: cheerio.CheerioAPI): string[] | undefined {
+  const text = $("body").text();
+  const matches = [...text.matchAll(/(?:ideal|perfect)\s+(?:for|customer):\s*([^.!?]+)/gi)];
+  return matches.length > 0 ? matches.map(m => m[1].trim()).slice(0, 5) : undefined;
+}
 
-  personaPatterns.forEach(pattern => {
-    const matches = pageText.matchAll(pattern);
-    for (const match of matches) {
-      if (match[1]) {
-        personas.push(match[1].trim());
+function findTone($: cheerio.CheerioAPI): string | undefined {
+  const text = $("body").text().toLowerCase();
+  const tones: Record<string, string[]> = {
+    'Friendly': ['friendly', 'welcome', 'happy'],
+    'Professional': ['professional', 'expertise', 'quality'],
+    'Helpful': ['help', 'support', 'service'],
+  };
+  const found = Object.entries(tones).filter(([_, kws]) => kws.filter(k => text.includes(k)).length >= 2).map(([tone]) => tone);
+  return found.join(', ') || undefined;
+}
+
+function findWritingStyle($: cheerio.CheerioAPI): string | undefined {
+  const text = $("body").text().toLowerCase();
+  const styles: string[] = [];
+  if (text.includes('we ') && text.includes('our ')) styles.push('First-person');
+  if (['implement', 'solution', 'optimize'].filter(w => text.includes(w)).length > 2) styles.push('Technical');
+  return styles.join(', ') || undefined;
+}
+
+function findLogo($: cheerio.CheerioAPI): string | undefined {
+  const selectors = ['img[class*="logo" i]', 'img[alt*="logo" i]', '.logo img', 'header img:first'];
+  for (const sel of selectors) {
+    const src = $(sel).first().attr('src');
+    if (src) return src.startsWith('http') ? src : undefined;
+  }
+  return undefined;
+}
+
+function findDifferentiator($: cheerio.CheerioAPI, competitorName: string): string | undefined {
+  const text = $("body").text().toLowerCase();
+  const competitor = competitorName.toLowerCase();
+  
+  // Look for text near the competitor mention that indicates differentiation
+  const differentiatorPatterns = [
+    `unlike ${competitor}`,
+    `compared to ${competitor}`,
+    `vs ${competitor}`,
+    `better than ${competitor}`,
+    `${competitor} doesn't`
+  ];
+  
+  for (const pattern of differentiatorPatterns) {
+    const index = text.indexOf(pattern);
+    if (index !== -1) {
+      // Extract surrounding context (100 chars after pattern)
+      const context = text.substring(index, index + 150);
+      const sentences = context.split(/[.!?]/);
+      if (sentences[0] && sentences[0].length > 20) {
+        return sentences[0].trim();
       }
     }
-  });
-
-  return personas.length > 0 ? personas.slice(0, 5) : undefined;
-}
-
-function extractWritingStyle($: cheerio.CheerioAPI): string | undefined {
-  const bodyText = $('body').text();
-  const paragraphs = $('p').map((_, el) => $(el).text()).get();
-  
-  if (paragraphs.length === 0) return undefined;
-
-  // Analyze tone
-  const professionalWords = ['professional', 'expert', 'qualified', 'certified', 'experienced'];
-  const casualWords = ['we', 'you', 'your', 'our', 'hey', 'awesome'];
-  const technicalWords = ['implement', 'solution', 'optimize', 'integrate', 'configure'];
-  
-  const textLower = bodyText.toLowerCase();
-  const professionalCount = professionalWords.filter(w => textLower.includes(w)).length;
-  const casualCount = casualWords.filter(w => textLower.includes(w)).length;
-  const technicalCount = technicalWords.filter(w => textLower.includes(w)).length;
-
-  const styles: string[] = [];
-  if (professionalCount > 3) styles.push('Professional');
-  if (casualCount > 5) styles.push('Conversational');
-  if (technicalCount > 3) styles.push('Technical');
-  
-  // Check if uses first person
-  if (textLower.includes('we ') && textLower.includes('our ')) {
-    styles.push('First-person');
   }
-
-  return styles.length > 0 ? styles.join(', ') : undefined;
-}
-
-function extractToneOfVoice($: cheerio.CheerioAPI): string | undefined {
-  const bodyText = $('body').text().toLowerCase();
   
-  const tones = {
-    'Friendly': ['friendly', 'welcome', 'happy to', 'love to', 'excited'],
-    'Professional': ['professional', 'expertise', 'quality', 'excellence'],
-    'Authoritative': ['leader', 'industry-leading', 'proven', 'trusted'],
-    'Helpful': ['help', 'support', 'guide', 'assist', 'service'],
-    'Innovative': ['innovative', 'cutting-edge', 'modern', 'advanced'],
-  };
-
-  const detectedTones: string[] = [];
-  for (const [tone, keywords] of Object.entries(tones)) {
-    const count = keywords.filter(keyword => bodyText.includes(keyword)).length;
-    if (count >= 2) {
-      detectedTones.push(tone);
-    }
-  }
-
-  return detectedTones.length > 0 ? detectedTones.join(', ') : undefined;
-}
-
-function extractLogo($: cheerio.CheerioAPI): string | undefined {
-  // Look for logo in common places
-  const logoSelectors = [
-    'img[class*="logo" i]',
-    'img[id*="logo" i]',
-    'img[alt*="logo" i]',
-    '.logo img',
-    '#logo img',
-    'header img:first',
-    '.navbar-brand img',
-  ];
-
-  for (const selector of logoSelectors) {
-    const src = $(selector).first().attr('src');
-    if (src) {
-      return src.startsWith('http') ? src : undefined;
-    }
-  }
-
   return undefined;
 }

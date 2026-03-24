@@ -1,11 +1,54 @@
--- Knowledge Builder Database Schema for Supabase
+-- =====================================================
+-- COMPLETE WEB SCRAPPER DATABASE SCHEMA FOR SUPABASE
+-- =====================================================
+-- DROP EXISTING SCHEMA WITH CASCADE AND RECREATE EVERYTHING
+-- Run this entire script in your Supabase SQL editor
+
+-- Enable required extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Drop existing schema if it exists (CASCADE will remove dependent objects)
+DROP TABLE IF EXISTS trust_signals CASCADE;
+DROP TABLE IF EXISTS competitors CASCADE;
+DROP TABLE IF EXISTS faqs CASCADE;
+DROP TABLE IF EXISTS testimonials CASCADE;
+DROP TABLE IF EXISTS products CASCADE;
+DROP TABLE IF EXISTS key_people CASCADE;
+DROP TABLE IF EXISTS social_media CASCADE;
+DROP TABLE IF EXISTS locations CASCADE;
+DROP TABLE IF EXISTS knowledge_bases CASCADE;
+DROP TABLE IF EXISTS knowledge_base_json CASCADE;
+DROP TABLE IF EXISTS companies CASCADE;
+
+-- Drop functions if they exist
+DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;
+DROP FUNCTION IF EXISTS create_knowledge_base_version() CASCADE;
+
+-- =====================================================
+-- PRIMARY STORAGE TABLE (JSON Approach - Preferred)
+-- =====================================================
+CREATE TABLE knowledge_base_json (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_url TEXT NOT NULL,
+  scraped_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  company_name TEXT,
+  company_description TEXT,
+  full_data JSONB NOT NULL, -- Complete KnowledgeBase object as JSON
+  ai_pitch TEXT, -- AI-generated pitch (THIS WAS MISSING!)
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- =====================================================
+-- STRUCTURED TABLES (Fallback Approach)
+-- =====================================================
 
 -- Companies table (main entity)
 CREATE TABLE companies (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   description TEXT,
-  website TEXT NOT NULL,
+  website TEXT NOT NULL UNIQUE,
   industry TEXT,
   business_model TEXT,
   company_size TEXT,
@@ -25,6 +68,7 @@ CREATE TABLE knowledge_bases (
   
   -- Positioning
   company_pitch TEXT,
+  ai_generated_pitch TEXT, -- THIS WAS MISSING IN ORIGINAL SCHEMA!
   founding_story TEXT,
   value_proposition TEXT,
   mission_statement TEXT,
@@ -148,18 +192,36 @@ CREATE TABLE trust_signals (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Indexes for better query performance
+-- =====================================================
+-- INDEXES FOR PERFORMANCE
+-- =====================================================
+
+-- JSON table indexes
+CREATE INDEX idx_knowledge_base_json_created_at ON knowledge_base_json(created_at);
+CREATE INDEX idx_knowledge_base_json_company_name ON knowledge_base_json(company_name);
+CREATE INDEX idx_knowledge_base_json_source_url ON knowledge_base_json(source_url);
+CREATE INDEX idx_knowledge_base_json_scraped_at ON knowledge_base_json(scraped_at);
+
+-- Structured table indexes
 CREATE INDEX idx_companies_name ON companies(name);
+CREATE INDEX idx_companies_website ON companies(website);
 CREATE INDEX idx_companies_industry ON companies(industry);
 CREATE INDEX idx_knowledge_bases_company_id ON knowledge_bases(company_id);
 CREATE INDEX idx_knowledge_bases_is_latest ON knowledge_bases(is_latest);
+CREATE INDEX idx_knowledge_bases_created_at ON knowledge_bases(created_at);
 CREATE INDEX idx_products_company_id ON products(company_id);
 CREATE INDEX idx_testimonials_company_id ON testimonials(company_id);
 CREATE INDEX idx_faqs_company_id ON faqs(company_id);
+CREATE INDEX idx_key_people_company_id ON key_people(company_id);
+CREATE INDEX idx_competitors_company_id ON competitors(company_id);
+CREATE INDEX idx_trust_signals_company_id ON trust_signals(company_id);
 
--- Row Level Security (RLS) Policies
+-- =====================================================
+-- ROW LEVEL SECURITY (RLS)
+-- =====================================================
 
 -- Enable RLS on all tables
+ALTER TABLE knowledge_base_json ENABLE ROW LEVEL SECURITY;
 ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE knowledge_bases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
@@ -171,28 +233,31 @@ ALTER TABLE faqs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE competitors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trust_signals ENABLE ROW LEVEL SECURITY;
 
--- Public read access (modify based on your needs)
-CREATE POLICY "Enable read access for all users" ON companies FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON knowledge_bases FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON locations FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON social_media FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON key_people FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON products FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON testimonials FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON faqs FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON competitors FOR SELECT USING (true);
-CREATE POLICY "Enable read access for all users" ON trust_signals FOR SELECT USING (true);
+-- =====================================================
+-- PERMISSIVE POLICIES (ALLOW ALL FOR DEVELOPMENT)
+-- =====================================================
+-- NOTE: In production, you should restrict these policies based on your auth requirements
 
--- Authenticated users can insert/update/delete (modify based on your auth needs)
-CREATE POLICY "Enable insert for authenticated users" ON companies FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "Enable update for authenticated users" ON companies FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY "Enable delete for authenticated users" ON companies FOR DELETE USING (auth.role() = 'authenticated');
+-- JSON table policies
+CREATE POLICY "Allow all operations on knowledge_base_json" ON knowledge_base_json FOR ALL USING (true);
 
-CREATE POLICY "Enable insert for authenticated users" ON knowledge_bases FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "Enable update for authenticated users" ON knowledge_bases FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY "Enable delete for authenticated users" ON knowledge_bases FOR DELETE USING (auth.role() = 'authenticated');
+-- Structured table policies
+CREATE POLICY "Allow all operations on companies" ON companies FOR ALL USING (true);
+CREATE POLICY "Allow all operations on knowledge_bases" ON knowledge_bases FOR ALL USING (true);
+CREATE POLICY "Allow all operations on locations" ON locations FOR ALL USING (true);
+CREATE POLICY "Allow all operations on social_media" ON social_media FOR ALL USING (true);
+CREATE POLICY "Allow all operations on key_people" ON key_people FOR ALL USING (true);
+CREATE POLICY "Allow all operations on products" ON products FOR ALL USING (true);
+CREATE POLICY "Allow all operations on testimonials" ON testimonials FOR ALL USING (true);
+CREATE POLICY "Allow all operations on faqs" ON faqs FOR ALL USING (true);
+CREATE POLICY "Allow all operations on competitors" ON competitors FOR ALL USING (true);
+CREATE POLICY "Allow all operations on trust_signals" ON trust_signals FOR ALL USING (true);
 
--- Trigger to update the updated_at timestamp
+-- =====================================================
+-- UTILITY FUNCTIONS AND TRIGGERS
+-- =====================================================
+
+-- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -200,6 +265,10 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Apply update timestamp trigger to relevant tables
+CREATE TRIGGER update_knowledge_base_json_updated_at BEFORE UPDATE ON knowledge_base_json
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_companies_updated_at BEFORE UPDATE ON companies
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -230,3 +299,59 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER knowledge_base_versioning BEFORE INSERT ON knowledge_bases
   FOR EACH ROW EXECUTE FUNCTION create_knowledge_base_version();
+
+-- =====================================================
+-- TEST THE SETUP
+-- =====================================================
+
+-- Insert a test record to verify JSON table works
+INSERT INTO knowledge_base_json (
+  source_url, 
+  scraped_at, 
+  company_name, 
+  company_description, 
+  full_data,
+  ai_pitch
+) VALUES (
+  'https://test-setup.com',
+  NOW(),
+  'Test Setup Company',
+  'Test Description for Schema Setup',
+  '{"test": "schema_setup_successful", "companyInfo": {"name": "Test Company"}}',
+  'This is a test AI-generated pitch to verify the ai_pitch column works.'
+);
+
+-- Verify the setup worked
+SELECT 
+  'Schema setup completed successfully!' as status,
+  'knowledge_base_json table' as primary_table,
+  count(*) as test_records_count
+FROM knowledge_base_json 
+WHERE source_url = 'https://test-setup.com';
+
+-- Show all tables created
+SELECT 
+  table_name,
+  column_name,
+  data_type,
+  is_nullable
+FROM information_schema.columns 
+WHERE table_name IN (
+  'knowledge_base_json', 
+  'companies', 
+  'knowledge_bases',
+  'locations',
+  'social_media', 
+  'key_people',
+  'products',
+  'testimonials',
+  'faqs',
+  'competitors',
+  'trust_signals'
+) AND table_schema = 'public'
+ORDER BY table_name, ordinal_position;
+
+-- Final success message
+SELECT 
+  '🎉 DATABASE SCHEMA SETUP COMPLETE!' as message,
+  'Your web scrapper can now save data to Supabase!' as status;

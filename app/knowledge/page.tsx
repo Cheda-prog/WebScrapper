@@ -3,14 +3,13 @@
 import { useState } from 'react';
 import { KnowledgeBase } from '@/types/knowledge';
 import Link from 'next/link';
-import FormattedOutput from '../components/FormattedOutput';
 
 export default function KnowledgePage() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase | null>(null);
-  const [editMode, setEditMode] = useState(false);
+
 
   const handleScrape = async () => {
     if (!url) {
@@ -23,19 +22,24 @@ export default function KnowledgePage() {
     setKnowledgeBase(null);
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+
       const response = await fetch('/api/scrape', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ url }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       const result = await response.json();
 
       if (result.success) {
         setKnowledgeBase(result.data);
-        setEditMode(false);
         // Data is automatically saved to Supabase by the API
         if (result.saved) {
           console.log('Saved to Supabase:', result.saved);
@@ -44,7 +48,12 @@ export default function KnowledgePage() {
         setError(result.error || 'Failed to scrape website');
       }
     } catch (err) {
-      setError('An error occurred while scraping the website');
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      if (errorMessage.includes('abort')) {
+        setError('Request timed out. The website may be slow to respond.');
+      } else {
+        setError('An error occurred while scraping the website: ' + errorMessage);
+      }
       console.error(err);
     } finally {
       setLoading(false);
@@ -119,12 +128,6 @@ export default function KnowledgePage() {
               </h2>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setEditMode(!editMode)}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-                >
-                  {editMode ? 'Formatted View' : 'Raw JSON'}
-                </button>
-                <button
                   onClick={handlePrint}
                   className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
                 >
@@ -145,8 +148,7 @@ export default function KnowledgePage() {
               </div>
             </div>
 
-            {editMode ? (
-              <div className="space-y-6">
+            <div className="space-y-6">
                 {/* Company Info */}
                 <Section title="Company Information">
                   <DataField label="Name" value={knowledgeBase.companyInfo.name} />
@@ -162,6 +164,16 @@ export default function KnowledgePage() {
                     <DataField label="Company Pitch" value={knowledgeBase.positioning.companyPitch} />
                     <DataField label="Value Proposition" value={knowledgeBase.positioning.valueProposition} />
                     <DataField label="Mission Statement" value={knowledgeBase.positioning.missionStatement} />
+                    {knowledgeBase.positioning.aiGeneratedPitch && (
+                      <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-bold text-purple-600 dark:text-purple-400">🤖 AI-Generated Pitch</span>
+                        </div>
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                          {knowledgeBase.positioning.aiGeneratedPitch}
+                        </p>
+                      </div>
+                    )}
                   </Section>
                 )}
 
@@ -287,10 +299,26 @@ export default function KnowledgePage() {
                     ))}
                   </Section>
                 )}
+
+                {/* AI Enrichments Metadata */}
+                {knowledgeBase.aiEnrichments && (
+                  <Section title="AI Enrichments">
+                    <DataField label="Enriched At" value={knowledgeBase.aiEnrichments.enrichedAt} />
+                    {knowledgeBase.aiEnrichments.enrichedFields && knowledgeBase.aiEnrichments.enrichedFields.length > 0 && (
+                      <div className="mt-2">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Fields Enriched by AI: </span>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {knowledgeBase.aiEnrichments.enrichedFields.map((field, idx) => (
+                            <span key={idx} className="px-2 py-1 bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded text-xs">
+                              {field}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </Section>
+                )}
               </div>
-            ) : (
-              <FormattedOutput data={knowledgeBase} url={url} />
-            )}
           </div>
         )}
       </div>

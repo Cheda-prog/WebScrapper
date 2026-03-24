@@ -13,16 +13,82 @@ import { KnowledgeBase } from '@/types/knowledge';
  * This function:
  * 1. Creates/updates the company record
  * 2. Creates a knowledge_base entry
- * 3. Saves all related data (products, FAQs, testimonials, team, CTAs)
+ * 3. Saves complete JSON backup
  */
 export async function saveKnowledgeBase(kb: KnowledgeBase, sourceUrl: string) {
   try {
+    console.log('📝 Starting database save for:', kb.companyInfo.name);
+    
+    // Step 1: Try to save just the JSON backup first (simpler approach)
+    console.log('💾 Saving JSON backup...');
+    const { data: jsonResult, error: jsonError } = await supabase
+      .from('knowledge_base_json')
+      .insert({
+        source_url: sourceUrl,
+        scraped_at: kb.scrapedAt,
+        company_name: kb.companyInfo.name,
+        company_description: kb.companyInfo.description,
+        full_data: kb, // Store complete knowledge base as JSON
+        ai_pitch: kb.positioning?.aiGeneratedPitch || null
+      })
+      .select()
+      .single();
+
+    if (jsonError) {
+      console.error('❌ JSON backup failed:', jsonError);
+      
+      // Provide helpful error messages based on error codes
+      if (jsonError.code === 'PGRST205' || jsonError.message?.includes('Could not find the table')) {
+        throw new Error('Database table "knowledge_base_json" does not exist. Please run supabase-setup.sql in your Supabase SQL editor first.');
+      }
+      
+      // Fallback: Try the original approach
+      console.log('🔄 Trying structured table approach...');
+      return await saveToStructuredTables(kb, sourceUrl);
+    }
+
+    console.log('✅ JSON backup saved successfully:', jsonResult.id);
+    return {
+      companyId: null,
+      knowledgeBaseId: jsonResult.id,
+      jsonBackupId: jsonResult.id
+    };
+
+  } catch (error) {
+    console.error('💥 Database save failed:', error);
+    
+    // Enhanced error reporting
+    if (error instanceof Error) {
+      if (error.message.includes('table') && error.message.includes('does not exist')) {
+        throw new Error('Required database tables do not exist. Please run supabase-setup.sql in your Supabase SQL editor.');
+      }
+      if (error.message.includes('column') && error.message.includes('does not exist')) {
+        throw new Error('Database schema is outdated. Please run supabase-setup.sql to add missing columns.');
+      }
+    }
+    
+    throw error;
+  }
+}
+
+// Fallback function for structured approach
+async function saveToStructuredTables(kb: KnowledgeBase, sourceUrl: string) {
+  console.log('🔄 Trying structured table approach...');
+  
+  try {
     // Step 1: Create or get existing company
-    const { data: existingCompany } = await supabase
+    const { data: existingCompany, error: selectError } = await supabase
       .from('companies')
       .select('id')
       .eq('website', sourceUrl)
       .single();
+
+    if (selectError && selectError.code !== 'PGRST116') {
+      if (selectError.code === 'PGRST205' || selectError.message?.includes('Could not find the table')) {
+        throw new Error('Database table "companies" does not exist. Please run supabase-setup.sql in your Supabase SQL editor first.');
+      }
+      throw selectError;
+    }
 
     let companyId: string;
 
@@ -34,8 +100,6 @@ export async function saveKnowledgeBase(kb: KnowledgeBase, sourceUrl: string) {
           name: kb.companyInfo.name,
           description: kb.companyInfo.description,
           industry: kb.companyInfo.industry,
-          business_model: kb.companyInfo.businessModel,
-          founded_year: kb.companyInfo.foundedYear,
           updated_at: new Date().toISOString()
         })
         .eq('id', existingCompany.id)
@@ -52,9 +116,7 @@ export async function saveKnowledgeBase(kb: KnowledgeBase, sourceUrl: string) {
           name: kb.companyInfo.name,
           description: kb.companyInfo.description,
           website: sourceUrl,
-          industry: kb.companyInfo.industry,
-          business_model: kb.companyInfo.businessModel,
-          founded_year: kb.companyInfo.foundedYear
+          industry: kb.companyInfo.industry
         })
         .select()
         .single();
@@ -63,130 +125,51 @@ export async function saveKnowledgeBase(kb: KnowledgeBase, sourceUrl: string) {
       companyId = newCompany.id;
     }
 
-    // Step 2: Create knowledge base entry
+    // Step 2: Save to knowledge_bases
+    const kbData: any = {
+      company_id: companyId,
+      source_url: sourceUrl,
+      company_pitch: kb.positioning?.companyPitch,
+      value_proposition: kb.positioning?.valueProposition,
+      target_audience: kb.customers?.targetAudience || [],
+      primary_colors: kb.branding?.primaryColors || [],
+      email: kb.onlinePresence?.email,
+      phone: kb.onlinePresence?.phone,
+      marketing_ctas: kb.marketingCTAs || [],
+      ai_generated_pitch: kb.positioning?.aiGeneratedPitch // Always include this now
+    };
+
     const { data: knowledgeBaseData, error: kbError } = await supabase
       .from('knowledge_bases')
-      .insert({
-        company_id: companyId,
-        source_url: sourceUrl,
-        company_pitch: kb.positioning?.companyPitch,
-        founding_story: kb.positioning?.foundingStory,
-        value_proposition: kb.positioning?.valueProposition,
-        target_audience: kb.customers?.targetAudience || [],
-        customer_needs: kb.customers?.customerNeeds || [],
-        tone_of_voice: kb.branding?.toneOfVoice,
-        writing_style: kb.branding?.writingStyle,
-        primary_colors: kb.branding?.primaryColors || [],
-        fonts: kb.branding?.fonts || [],
-        logo_url: kb.branding?.logoUrl,
-        email: kb.onlinePresence?.email,
-        phone: kb.onlinePresence?.phone,
-        blog_url: kb.onlinePresence?.blogUrl,
-        marketing_ctas: kb.marketingCTAs || [],
-        raw_metadata: kb as any // Store full scraped data as JSON
-      })
+      .insert(kbData)
       .select()
       .single();
 
-    if (kbError) throw kbError;
-
-    // Step 3: Save products
-    if (kb.products && kb.products.length > 0) {
-      const productsToInsert = kb.products.map(product => ({
-        company_id: companyId,
-        name: product.name,
-        description: product.description,
-        category: product.category,
-        pricing: product.pricing,
-        features: product.features || []
-      }));
-
-      const { error: productsError } = await supabase
-        .from('products')
-        .insert(productsToInsert);
-
-      if (productsError) console.error('Error saving products:', productsError);
+    if (kbError) {
+      if (kbError.code === 'PGRST205' || kbError.message?.includes('Could not find the table')) {
+        throw new Error('Database table "knowledge_bases" does not exist. Please run supabase-setup.sql in your Supabase SQL editor first.');
+      }
+      if (kbError.message?.includes('ai_generated_pitch') && kbError.message?.includes('column')) {
+        throw new Error('Database column "ai_generated_pitch" is missing from knowledge_bases table. Please run supabase-setup.sql to add it.');
+      }
+      throw kbError;
     }
 
-    // Step 4: Save testimonials
-    if (kb.testimonials && kb.testimonials.length > 0) {
-      const testimonialsToInsert = kb.testimonials.map(testimonial => ({
-        company_id: companyId,
-        author: testimonial.author,
-        role: testimonial.role,
-        content: testimonial.content,
-        rating: testimonial.rating
-      }));
-
-      const { error: testimonialsError } = await supabase
-        .from('testimonials')
-        .insert(testimonialsToInsert);
-
-      if (testimonialsError) console.error('Error saving testimonials:', testimonialsError);
-    }
-
-    // Step 5: Save FAQs
-    if (kb.faqs && kb.faqs.length > 0) {
-      const faqsToInsert = kb.faqs.map((faq, index) => ({
-        company_id: companyId,
-        question: faq.question,
-        answer: faq.answer,
-        display_order: index + 1
-      }));
-
-      const { error: faqsError } = await supabase
-        .from('faqs')
-        .insert(faqsToInsert);
-
-      if (faqsError) console.error('Error saving FAQs:', faqsError);
-    }
-
-    // Step 6: Save team members
-    if (kb.keyPeople && kb.keyPeople.length > 0) {
-      const teamToInsert = kb.keyPeople.map(member => ({
-        company_id: companyId,
-        name: member.name,
-        role: member.role,
-        bio: member.bio,
-        image_url: member.imageUrl
-      }));
-
-      const { error: teamError } = await supabase
-        .from('key_people')
-        .insert(teamToInsert);
-
-      if (teamError) console.error('Error saving team members:', teamError);
-    }
-
-    // Step 7: Save social media links
-    if (kb.onlinePresence?.socialMedia && kb.onlinePresence.socialMedia.length > 0) {
-      const socialMediaToInsert = kb.onlinePresence.socialMedia.map(social => ({
-        company_id: companyId,
-        platform: social.platform,
-        url: social.url
-      }));
-
-      const { error: socialError } = await supabase
-        .from('social_media')
-        .insert(socialMediaToInsert);
-
-      if (socialError) console.error('Error saving social media:', socialError);
-    }
-
+    console.log('✅ Structured tables save completed successfully');
     return {
-      success: true,
       companyId,
-      knowledgeBaseId: knowledgeBaseData.id
+      knowledgeBaseId: knowledgeBaseData.id,
+      jsonBackupId: null
     };
-
+    
   } catch (error) {
-    console.error('Database save error:', error);
+    console.error('💥 Structured tables save failed:', error);
     throw error;
   }
 }
 
 /**
- * Retrieve all knowledge bases from database
+ * Get all saved knowledge bases
  */
 export async function getAllKnowledgeBases() {
   const { data, error } = await supabase
@@ -197,48 +180,28 @@ export async function getAllKnowledgeBases() {
         id,
         name,
         website,
+        description,
         industry
       )
     `)
-    .eq('is_latest', true)
-    .order('scraped_at', { ascending: false });
+    .order('created_at', { ascending: false });
 
   if (error) throw error;
   return data;
 }
 
 /**
- * Get a single knowledge base with all related data
+ * Get JSON backup by ID
  */
-export async function getKnowledgeBase(companyId: string) {
+export async function getKnowledgeBaseJSON(companyId: string) {
   const { data, error } = await supabase
-    .from('companies')
-    .select(`
-      *,
-      knowledge_bases (*),
-      products (*),
-      testimonials (*),
-      faqs (*),
-      key_people (*),
-      social_media (*),
-      locations (*)
-    `)
-    .eq('id', companyId)
+    .from('knowledge_base_json')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .single();
 
   if (error) throw error;
   return data;
-}
-
-/**
- * Delete a company and all related data (CASCADE will handle relations)
- */
-export async function deleteKnowledgeBase(companyId: string) {
-  const { error } = await supabase
-    .from('companies')
-    .delete()
-    .eq('id', companyId);
-
-  if (error) throw error;
-  return { success: true };
 }

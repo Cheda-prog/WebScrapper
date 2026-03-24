@@ -1,0 +1,31 @@
+⚠️ Design Observations (Interview Gold)
+✅ Strengths:
+Clean separation of concerns
+Reusable pipeline
+Template-driven (very scalable)
+Handles missing data gracefully
+⚠️ Weaknesses / Improvements:
+Sync file read (readFileSync)
+Blocks the event loop
+Better: async version
+Regex injection risk
+If variable contains special regex chars → bug
+No caching
+Templates reloaded every time
+String-only variables
+Limits flexibility (no nested structures)
+
+
+
+🧠 Interview Questions (EXPECT THESE)
+🔹 Conceptual
+Why use prompt templates instead of hardcoding prompts?
+Better aproach for all tasks instead of simply just applying it to each this aproach makes it better suited to tackle diffrent problmes 
+What are the advantages of separating prompts into .txt files?
+readablity same thing when you make a shader Additional the use of variables can more easily be applied 
+How does this design improve scalability?
+You can always just change / add more prompts to the txt to the program since we already have the template for wachc
+What happens if a variable is missing in the template? because of the since each variable is written like with a ? after 
+the statment it checks for it before going deeper into each statment then if LHS returns false then the RHS || part will just give it a place holder value
+
+

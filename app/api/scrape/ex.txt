@@ -1,0 +1,27 @@
+🔍 Detailed Breakdown
+1. /app/api/scrape/route.ts - The Orchestrator
+POST /api/scrape
+Primary Purpose: Complete scraping workflow from URL to database
+File Size: ~152 lines
+What It Does:
+- ✅ URL Validation & Normalization (https:// prefix, URL format check)
+- ✅ Website Scraping (calls scrapeWebsiteEnhanced())
+- ✅ AI Enrichment (NVIDIA NIM integration with retry logic)
+- ✅ Database Saving (calls saveKnowledgeBase())
+- ✅ Error Orchestration (handles failures at each stage)
+- ✅ Response Formatting (returns enriched data + metadata)
+Key Features:
+- Multi-stage pipeline with independent error handling
+- Optional AI enrichment (skips if no NVIDIA key)
+- Optional database saving (continues if Supabase fails)
+- Comprehensive logging at each stage
+- Warning system for missing configurations
+Response Format:
+{
+  "success": true,
+  "data": { /* Complete KnowledgeBase object */ },
+  "enrichments": { /* AI metadata */ },
+  "saved": { /* Database IDs */ },
+  "warnings": [ /* Configuration issues */ ]
+}
+---

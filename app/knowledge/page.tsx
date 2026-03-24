@@ -25,7 +25,7 @@ export default function KnowledgePage() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min timeout
 
-      const response = await fetch('/api/scrape', {
+      const response = await fetch('/api/analyze-company', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

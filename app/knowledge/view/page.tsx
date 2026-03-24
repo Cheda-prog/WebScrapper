@@ -24,7 +24,7 @@ export default function ViewKnowledgePage() {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('/api/knowledge-bases');
+      const response = await fetch('/api/saved-companies');
       const result = await response.json();
       
       if (result.success) {
@@ -64,7 +64,7 @@ export default function ViewKnowledgePage() {
 
     try {
       // Delete from database
-      const response = await fetch(`/api/knowledge-bases/${id}`, {
+      const response = await fetch(`/api/saved-companies/${id}`, {
         method: 'DELETE'
       });
 

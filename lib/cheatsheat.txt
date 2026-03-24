@@ -1,0 +1,6 @@
+Question 1: Architecture & Data Flow
+Can you walk me through what happens from the moment a user enters a URL until 
+they see the data in the "View All Saved" page? Include the key files involved 
+and the data transformations that occur.
+
+After recieving the URL the the sc
